@@ -1,0 +1,64 @@
+version: '3'
+services:
+  reverse-proxy:
+    image: traefik:v2.10
+    command: --api.insecure=true --providers.docker
+    ports:
+      - "80:80"
+      - "8081:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+  frontend:
+    image: sogis/ilivalidator-web-service:2
+    restart: unless-stopped
+    environment:
+      TZ: Europe/Zurich
+      JOBRUNR_SERVER_ENABLED: "false"
+    entrypoint: "java -XX:+UseParallelGC -Xmx4G -jar application.jar --spring.profiles.active=docker"
+    ports:
+      - 8080:8080
+      - 8000:8000
+    volumes:
+      - type: volume
+        source: docbase
+        target: /docbase
+      - type: volume
+        source: work
+        target: /work
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.frontend.rule=Host(`ilivalidator.localhost`) || Host(`ilivalidator.sogeo.services`)"
+      - "traefik.http.services.frontend.loadbalancer.server.port=8080"
+      #- "traefik.http.routers.whoami.entrypoints=web"
+  worker:
+    image: sogis/ilivalidator-web-service:2
+    restart: unless-stopped
+    deploy:
+      replicas: 2
+    environment:
+      TZ: Europe/Zurich
+      JOBRUNR_DASHBOARD_ENABLED: "false"
+      REST_API_ENABLED: "false"
+      UNPACK_CONFIG_FILES: "false"
+      CLEANER_ENABLED: "false"
+    entrypoint: "java -XX:+UseParallelGC -Xmx4G -jar application.jar --spring.profiles.active=docker"
+    volumes:
+      - type: volume
+        source: docbase
+        target: /docbase
+      - type: volume
+        source: work
+        target: /work
+  dozzle:
+    container_name: dozzle
+    image: amir20/dozzle:latest
+    environment:
+      DOZZLE_USERNAME: admin
+      DOZZLE_PASSWORD: admin
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    ports:
+      - 9999:8080
+volumes:
+  docbase:
+  work:
